@@ -33,49 +33,76 @@ Se aplica una configuración segura para proteger el servidor web, siguiendo las
     ```
 
 ### 2.2. Aplicar Configuración Segura del Sitio
-- Se edita el fichero `/etc/nginx/sites-available/default` y se reemplaza su contenido con el siguiente bloque, que ahora incluye las directivas de seguridad avanzadas.
+- Se edita el fichero `/etc/nginx/sites-available/default` y se reemplaza su contenido con la configuración final, que incluye un bloque `default_server` para capturar hosts desconocidos y directivas de seguridad Nivel 1 y 2 de CIS.
     ```nginx
-    # BLOQUE 1: Redirección de HTTP (80) a HTTPS (443)
+    # (CIS 2.4.2) Bloque para capturar peticiones con cabecera Host inválida o desconocida
     server {
         listen 80 default_server;
         listen [::]:80 default_server;
-        server_name _;
-        return 301 https://$host:8443$request_uri;
-    }
-
-    # BLOQUE 2: Servidor principal seguro (HTTPS)
-    server {
         listen 443 ssl http2 default_server;
         listen [::]:443 ssl http2 default_server;
 
         ssl_certificate /etc/ssl/certs/nginx-selfsigned.crt;
         ssl_certificate_key /etc/ssl/private/nginx-selfsigned.key;
+        
+        server_name _;
+        return 404;
+    }
 
-        # --- Hardening SSL/TLS: Protocolos y Cifrados (CIS 4.1.4, 4.1.5) ---
+    # BLOQUE 1: Redirección de HTTP (80) a HTTPS (443) para el sitio válido
+    server {
+        listen 80;
+        listen [::]:80;
+        
+        # Se especifica el nombre del servidor para que responda solo a peticiones válidas
+        server_name 127.0.0.1 localhost;
+        
+        return 301 https://$host:8443$request_uri;
+    }
+
+    # BLOQUE 2: Servidor principal seguro (HTTPS) para el sitio válido
+    server {
+        listen 443 ssl http2;
+        listen [::]:443 ssl http2;
+        
+        # Se especifica el nombre del servidor para que responda solo a peticiones válidas
+        server_name 127.0.0.1 localhost;
+
+        # --- Ficheros del Certificado SSL ---
+        ssl_certificate /etc/ssl/certs/nginx-selfsigned.crt;
+        ssl_certificate_key /etc/ssl/private/nginx-selfsigned.key;
+
+        # --- Hardening SSL/TLS Avanzado (CIS 4.1.4, 4.1.5, 4.1.6, 4.1.12) ---
         ssl_protocols TLSv1.2 TLSv1.3;
         ssl_prefer_server_ciphers on;
         ssl_ciphers 'ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384';
+        ssl_dhparam /etc/nginx/dhparam.pem;
+        ssl_session_tickets off;
 
-        # --- Hardening: Cabeceras de Seguridad (CIS 5.3.1, 5.3.2, 4.1.8) ---
+        # --- Hardening: Cabeceras de Seguridad Avanzadas (CIS 5.3.x, 4.1.8) ---
         add_header X-Frame-Options "DENY" always;
         add_header X-Content-Type-Options "nosniff" always;
         add_header Strict-Transport-Security "max-age=15768000; includeSubDomains" always;
+        add_header Content-Security-Policy "default-src 'self'" always;
+        add_header Referrer-Policy "no-referrer" always;
 
         # --- Configuración del Servidor ---
         root /var/www/html;
         index index.html index.htm;
-        server_name _;
 
-        # --- Hardening Avanzado: Timeouts y Límites (CIS 2.4.3, 5.2.1, 5.2.2, 5.2.3) ---
+        # --- Hardening Avanzado: Timeouts y Límites (CIS 2.4.3, 5.2.x) ---
         keepalive_timeout 10;
         client_body_timeout 10;
         client_header_timeout 10;
         client_max_body_size 100k;
         large_client_header_buffers 2 1k;
-
-        # Aplicar límites de conexión y peticiones (definidos en nginx.conf)
         limit_conn limitperip 10;
         limit_req zone=ratelimit burst=10 nodelay;
+
+        # (CIS 2.5.3) Denegar acceso a ficheros ocultos
+        location ~ /\. {
+            deny all;
+        }
 
         location / {
             try_files $uri $uri/ =404;
@@ -99,14 +126,10 @@ Se aplica una configuración segura para proteger el servidor web, siguiendo las
     http {
         # ... otras directivas http ...
 
-        ##
         # Hardening Básico: Ocultar Versión (CIS 2.5.1)
-        ##
         server_tokens off;
 
-        ##
         # Hardening Avanzado: Límites de Conexión y Peticiones (CIS 5.2.4, 5.2.5)
-        ##
         limit_conn_zone $binary_remote_addr zone=limitperip:10m;
         limit_req_zone $binary_remote_addr zone=ratelimit:10m rate=5r/s;
 
@@ -136,10 +159,11 @@ Se aplican medidas de seguridad adicionales a nivel de sistema para proteger el 
     sudo find /etc/nginx -type f -exec chmod 644 {} \;
     ```
 - **Proteger ficheros de la web:**
-    Se cambia la propiedad de los archivos web al usuario administrador para que el proceso de Nginx (`www-data`) solo pueda leerlos.
+    Para resolver un error `403 Forbidden`, se asigna la propiedad de los ficheros web al usuario del servidor (`www-data`) y se aplican los permisos mínimos necesarios.
     ```bash
-    sudo chown -R $USER:$USER /var/www/html
-    sudo chmod -R 755 /var/www/html
+    sudo chown -R www-data:www-data /var/www/html
+    sudo find /var/www/html -type d -exec chmod 755 {} \;
+    sudo find /var/www/html -type f -exec chmod 644 {} \;
     ```
 
 ### 3.2. Instalar Defensa Proactiva con Fail2ban
@@ -170,11 +194,26 @@ Se aplican medidas de seguridad adicionales a nivel de sistema para proteger el 
     ```bash
     sudo sysctl -p
     ```
+
+### 3.4. Generar Parámetros Diffie-Hellman (CIS 4.1.6)
+- Se generan parámetros DH de 2048 bits para reforzar el intercambio de claves.
+    ```bash
+    sudo openssl dhparam -out /etc/nginx/dhparam.pem 2048
+    ```
+
+### 3.5. Asegurar Permisos de Ficheros Críticos (CIS 4.1.3, 2.3.3)
+- Se aplican permisos explícitos a la clave privada SSL y al fichero de proceso (PID) de Nginx.
+    ```bash
+    sudo chmod 400 /etc/ssl/private/nginx-selfsigned.key
+    sudo chown root:root /var/run/nginx.pid
+    sudo chmod 644 /var/run/nginx.pid
+    ```
+
 ---
 
 ## 4. Anexo: Configuración de Red para VM (VirtualBox)
 
-Durante la puesta en marcha, se detectó un problema de conectividad entre el PC anfitrión y la máquina virtual (VM) que impedía el acceso al servidor web. El problema se solucionó configurando el **Reenvío de Puertos (Port Forwarding)** en el software de virtualización.
+Durante la puesta en marcha, se detectó un problema de conectividad entre el PC anfitrión y la máquina virtual (VM). El problema se solucionó configurando el **Reenvío de Puertos (Port Forwarding)**.
 
 - **Modo de Red de la VM:** NAT
 - **Reglas de Reenvío:**
