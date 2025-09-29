@@ -22,7 +22,7 @@ This document provides instructions for setting up and configuring NGINX with a 
 
 ## 2. Configuración de Seguridad de Nginx
 
-Se aplica una configuración segura para proteger el servidor web.
+Se aplica una configuración segura para proteger el servidor web, siguiendo las recomendaciones del benchmark CIS.
 
 ### 2.1. Generar Certificado SSL/TLS Autofirmado
 - Se crea un certificado y una clave privada para habilitar las conexiones seguras HTTPS.
@@ -33,7 +33,7 @@ Se aplica una configuración segura para proteger el servidor web.
     ```
 
 ### 2.2. Aplicar Configuración Segura del Sitio
-- Se edita el fichero `/etc/nginx/sites-available/default` y se reemplaza su contenido con el siguiente bloque, que fuerza HTTPS, añade cabeceras de seguridad y usa protocolos de cifrado robustos.
+- Se edita el fichero `/etc/nginx/sites-available/default` y se reemplaza su contenido con el siguiente bloque, que ahora incluye las directivas de seguridad avanzadas.
     ```nginx
     # BLOQUE 1: Redirección de HTTP (80) a HTTPS (443)
     server {
@@ -51,34 +51,71 @@ Se aplica una configuración segura para proteger el servidor web.
         ssl_certificate /etc/ssl/certs/nginx-selfsigned.crt;
         ssl_certificate_key /etc/ssl/private/nginx-selfsigned.key;
 
+        # --- Hardening SSL/TLS: Protocolos y Cifrados (CIS 4.1.4, 4.1.5) ---
         ssl_protocols TLSv1.2 TLSv1.3;
         ssl_prefer_server_ciphers on;
         ssl_ciphers 'ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384';
 
+        # --- Hardening: Cabeceras de Seguridad (CIS 5.3.1, 5.3.2, 4.1.8) ---
         add_header X-Frame-Options "DENY" always;
         add_header X-Content-Type-Options "nosniff" always;
+        add_header Strict-Transport-Security "max-age=15768000; includeSubDomains" always;
 
+        # --- Configuración del Servidor ---
         root /var/www/html;
         index index.html index.htm;
         server_name _;
+
+        # --- Hardening Avanzado: Timeouts y Límites (CIS 2.4.3, 5.2.1, 5.2.2, 5.2.3) ---
+        keepalive_timeout 10;
+        client_body_timeout 10;
+        client_header_timeout 10;
+        client_max_body_size 100k;
+        large_client_header_buffers 2 1k;
+
+        # Aplicar límites de conexión y peticiones (definidos en nginx.conf)
+        limit_conn limitperip 10;
+        limit_req zone=ratelimit burst=10 nodelay;
 
         location / {
             try_files $uri $uri/ =404;
         }
 
+        # --- Hardening: Limitar Métodos HTTP (CIS 5.1.2) ---
         if ($request_method !~ ^(GET|HEAD|POST)$) {
             return 405;
         }
     }
     ```
 
-### 2.3. Ocultar Versión de Nginx
-- Para evitar revelar información a posibles atacantes, se modifica el fichero `/etc/nginx/nginx.conf` para añadir o descomentar la siguiente directiva.
-    ```nginx
-    server_tokens off;
+### 2.3. Ocultar Versión de Nginx y Configurar Límites Globales
+- Para evitar revelar información y definir zonas de limitación, se modifica el fichero `/etc/nginx/nginx.conf`.
+    ```bash
+    # Para editar el fichero:
+    sudo nano /etc/nginx/nginx.conf
     ```
-- **Aplicar todos los cambios de Nginx**
-    Se comprueba la sintaxis y se reinicia el servicio para aplicar la configuración.
+- Se añade o descomenta `server_tokens off;` y se añaden las directivas `limit_conn_zone` y `limit_req_zone` dentro del bloque `http { ... }`.
+    ```nginx
+    http {
+        # ... otras directivas http ...
+
+        ##
+        # Hardening Básico: Ocultar Versión (CIS 2.5.1)
+        ##
+        server_tokens off;
+
+        ##
+        # Hardening Avanzado: Límites de Conexión y Peticiones (CIS 5.2.4, 5.2.5)
+        ##
+        limit_conn_zone $binary_remote_addr zone=limitperip:10m;
+        limit_req_zone $binary_remote_addr zone=ratelimit:10m rate=5r/s;
+
+        # ... resto de la configuración http ...
+    }
+    ```
+
+### 2.4. Aplicar todos los cambios de Nginx
+- Se comprueba la sintaxis y se reinicia el servicio para aplicar toda la configuración.
     ```bash
     sudo nginx -t
     sudo systemctl restart nginx
