@@ -95,17 +95,16 @@ INTERFACESv4="enp0s3"
 ## 3.3. Asegúrate de declarar la subred correcta en dhcpd.conf
 Archivo principal: `/etc/dhcp/dhcpd.conf`
 ```conf
-subnet 192.168.10.0 netmask 255.255.255.0 {
-  range 192.168.10.100 192.168.10.200;
-  option routers 192.168.10.1;
-  option subnet-mask 255.255.255.0;
-  option domain-name-servers 8.8.8.8, 8.8.4.4;
+subnet 10.0.2.0 netmask 255.255.255.0 {
+  range 10.0.2.100 10.0.2.200;
+  option routers 10.0.2.15;
+  option domain-name-servers 8.8.8.8;
   default-lease-time 600;
   max-lease-time 7200;
 
   host equipo1 {
     hardware ethernet 00:11:22:33:44:55;
-    fixed-address 192.168.10.150;
+    fixed-address 10.0.2.150;
   }
 }
 ```
@@ -191,4 +190,5 @@ Automatizar con cron (`sudo crontab -e`):
 ```
 
 ---
+
 
