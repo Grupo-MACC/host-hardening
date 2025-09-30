@@ -69,6 +69,30 @@ sudo systemctl restart ssh
 
 ## 3. Configuración del servicio DHCP
 
+## 3.1. Verificar interfaces disponibles
+```bash
+ip addr
+```
+Esto te mostrará las interfaces reales. En distribuciones recientes puede ser algo como enp0s3, ens33, enp1s0, etc.
+```text
+1: lo: <LOOPBACK,UP> ...
+2: enp0s3: <BROADCAST,MULTICAST,UP> ...
+```
+
+## 3.2. Edita /etc/default/isc-dhcp-server
+```bash
+sudo nano /etc/default/isc-dhcp-server
+```
+Cambia la linea:
+```conf
+INTERFACESv4=""
+```
+Por tu interfaz real, por ejemplo:
+```conf
+INTERFACESv4="enp0s3"
+```
+
+## 3.3. Asegúrate de declarar la subred correcta en dhcpd.conf
 Archivo principal: `/etc/dhcp/dhcpd.conf`
 ```conf
 subnet 192.168.10.0 netmask 255.255.255.0 {
@@ -81,7 +105,7 @@ subnet 192.168.10.0 netmask 255.255.255.0 {
 
   host equipo1 {
     hardware ethernet 00:11:22:33:44:55;
-    fixed-address 192.168.10.50;
+    fixed-address 192.168.10.150;
   }
 }
 ```
@@ -89,7 +113,10 @@ subnet 192.168.10.0 netmask 255.255.255.0 {
 Validar configuración:
 ```bash
 sudo dhcpd -t -cf /etc/dhcp/dhcpd.conf
+sudo systemctl restart isc-dhcp-server
+sudo systemctl status isc-dhcp-server
 ```
+Ahora debería arrancar correctamente en la interfaz correcta.
 
 Ver logs:
 ```bash
@@ -164,3 +191,4 @@ Automatizar con cron (`sudo crontab -e`):
 ```
 
 ---
+
