@@ -124,40 +124,9 @@ tail -f /var/log/syslog | grep dhcpd
 
 ---
 
-## 4. Seguridad del Software
+## 4. Monitoreo y Respuesta
 
-### 4.1. Correr en chroot
-```bash
-sudo mkdir -p /var/lib/dhcp/chroot
-sudo chown dhcpd:dhcpd /var/lib/dhcp/chroot
-```
-
-Archivo: `/etc/systemd/system/isc-dhcp-server.service.d/override.conf`
-```conf
-[Service]
-ExecStart=
-ExecStart=/usr/sbin/dhcpd -user dhcpd -group dhcpd -chroot /var/lib/dhcp/chroot
-```
-
-Aplicar cambios:
-```bash
-sudo systemctl daemon-reexec
-sudo systemctl restart isc-dhcp-server
-```
-
-### 4.2. Limitar capacidades con systemd
-En el mismo override:
-```conf
-CapabilityBoundingSet=CAP_NET_BIND_SERVICE
-ProtectSystem=full
-ProtectHome=yes
-```
-
----
-
-## 5. Monitoreo y Respuesta
-
-### 5.1. Logs centralizados
+### 4.1. Logs centralizados
 Editar `/etc/rsyslog.conf`:
 ```conf
 *.* @192.168.10.5:514
@@ -167,7 +136,7 @@ Reiniciar:
 sudo systemctl restart rsyslog
 ```
 
-### 5.2. Detectar rogue DHCP
+### 4.2. Detectar rogue DHCP
 ```bash
 sudo apt install dhcping
 dhcping -s 192.168.10.1
@@ -176,7 +145,7 @@ sudo nmap --script broadcast-dhcp-discover -e eth0
 
 ---
 
-## 6. Copias de seguridad
+## 5. Copias de seguridad
 
 Respaldar configuración y leases:
 ```bash
@@ -190,5 +159,6 @@ Automatizar con cron (`sudo crontab -e`):
 ```
 
 ---
+
 
 
