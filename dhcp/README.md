@@ -127,20 +127,42 @@ tail -f /var/log/syslog | grep dhcpd
 ## 4. Monitoreo y Respuesta
 
 ### 4.1. Logs centralizados
-Editar `/etc/rsyslog.conf`:
-```conf
-*.* @192.168.10.5:514
+Instalar rsyslog (si no está instalado):
+```bash
+sudo apt update
+sudo apt install rsyslog -y
 ```
-Reiniciar:
+Habilitar la recepción remota UDP en el servidor de logs
+Edita el archivo /etc/rsyslog.conf y descomenta (o añade) las siguientes líneas:
+```conf
+module(load="imudp")
+input(type="imudp" port="514")
+```
+Reiniciar el servicio para aplicar cambios:
 ```bash
 sudo systemctl restart rsyslog
 ```
-
-### 4.2. Detectar rogue DHCP
+Verificar que el puerto 514 esté escuchando:
 ```bash
-sudo apt install dhcping
-dhcping -s 192.168.10.1
-sudo nmap --script broadcast-dhcp-discover -e eth0
+sudo ss -lun | grep 514
+```
+Editar la configuración de rsyslog:
+```bash
+sudo nano /etc/rsyslog.d/90-central-logging.conf
+```
+Escribir el siguiente texto
+```conf
+*.* action(type="omfwd" target="10.0.2.15" port="514" protocol="udp")
+```
+Reiniciar el servicio y ver el estado
+```bash
+sudo systemctl restart rsyslog
+sudo systemctl status rsyslog
+```
+Hacer una prueba de funcionamiento
+```bash
+logger "Prueba de envío de logs centralizados"
+sudo tail -f /var/log/syslog
 ```
 
 ---
@@ -159,6 +181,7 @@ Automatizar con cron (`sudo crontab -e`):
 ```
 
 ---
+
 
 
 
